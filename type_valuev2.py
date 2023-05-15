@@ -53,3 +53,13 @@ def create_value(val):
     if val == InterpreterBase.NOTHING_DEF:
         return Value(Type.NOTHING, None)
     return None
+
+def assign_type(type):
+    if type == InterpreterBase.INT_DEF:
+        return Type.INT
+    elif type == InterpreterBase.BOOL_DEF:
+        return Type.BOOL
+    elif type == InterpreterBase.STRING_DEF:
+        return Type.STRING
+    else:
+        return Type.CLASS

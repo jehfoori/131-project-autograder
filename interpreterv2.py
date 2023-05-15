@@ -3,10 +3,10 @@ The module that brings it all together! We intentionally keep this as small as p
 delegating functionality to various modules.
 """
 
-from classv1 import ClassDef
+from classv2 import ClassDef
 from intbase import InterpreterBase, ErrorType
 from bparser import BParser
-from objectv1 import ObjectDef
+from objectv2 import ObjectDef
 
 
 class Interpreter(InterpreterBase):

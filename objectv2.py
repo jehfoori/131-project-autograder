@@ -3,10 +3,10 @@ Module handling the operations of an object. This contains the meat
 of the code to execute various instructions.
 """
 
-from env_v1 import EnvironmentManager
+from env_v2 import EnvironmentManager
 from intbase import InterpreterBase, ErrorType
-from type_valuev1 import create_value
-from type_valuev1 import Type, Value
+from type_valuev2 import create_value
+from type_valuev2 import Type, Value
 
 
 class ObjectDef:

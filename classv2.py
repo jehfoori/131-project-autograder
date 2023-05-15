@@ -8,7 +8,8 @@ two methods cannot have the same name with different parameters.
 """
 
 from intbase import InterpreterBase, ErrorType
-
+from type_valuev2 import create_value, assign_type
+from type_valuev2 import Type, Value
 
 class MethodDef:
     """
@@ -73,11 +74,33 @@ class ClassDef:
                 if member[2] in fields_defined_so_far:  # redefinition
                     self.interpreter.error(
                         ErrorType.NAME_ERROR,
-                        "duplicate field " + member[1],
-                        member[0].line_num,
+                        "duplicate field " + member[1]                    
                     )
-                self.fields.append(FieldDef(member))
-                fields_defined_so_far.add(member[1])
+                new_field = FieldDef(member)
+                f_type = assign_type(new_field.field_type)
+                v_type = create_value(member[3]).type()
+
+                if f_type == Type.CLASS:
+                    # if class name doesn't exist yet
+                    if new_field.field_type not in self.interpreter.class_index and new_field.field_type != self.name:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR,
+                            "invalid type/type mismatch with field " + member[2]
+                        )
+                    # if default value isn't null
+                    elif new_field.default_field_value != InterpreterBase.NULL_DEF:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR,
+                            "invalid type/type mismatch with field " + member[2]
+                        )
+                elif f_type == Type.INT or f_type == Type.STRING or f_type == Type.BOOL:
+                    if v_type != f_type:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR,
+                            "invalid type/type mismatch with field " + member[2]
+                        )
+                self.fields.append(new_field)
+                fields_defined_so_far.add(new_field.field_name)
 
     def __create_method_list(self, class_body):
         self.methods = []
