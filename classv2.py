@@ -8,7 +8,7 @@ two methods cannot have the same name with different parameters.
 """
 
 from intbase import InterpreterBase, ErrorType
-from type_valuev2 import create_value, assign_type
+from type_valuev2 import create_value
 from type_valuev2 import Type, Value
 
 class MethodDef:
@@ -22,7 +22,6 @@ class MethodDef:
         self.formal_params = []
         self.param_types = {}
         for param in method_def[3]:
-            print(param)
             self.formal_params.append(param[1])
             self.param_types[param[1]] = param[0]
         self.code = method_def[4]
@@ -53,7 +52,7 @@ class ClassDef:
         self.name = class_def[1]
         self.__create_field_list(class_def[2:])
         self.__create_method_list(class_def[2:])
-
+    
     def get_fields(self):
         """
         Get a list of FieldDefs for *all* fields in the class.
@@ -66,6 +65,24 @@ class ClassDef:
         """
         return self.methods
 
+    def assign_type(self, type):
+        if type == InterpreterBase.INT_DEF:
+            return Type.INT
+        elif type == InterpreterBase.BOOL_DEF:
+            return Type.BOOL
+        elif type == InterpreterBase.STRING_DEF:
+            return Type.STRING
+        elif self.valid_class(type):
+            return Type.CLASS
+        else:
+            return None
+
+    def valid_class(self, class_name):
+        if class_name in self.interpreter.class_index or class_name == self.name:
+            return True
+        
+        return False
+
     def __create_field_list(self, class_body):
         self.fields = []
         fields_defined_so_far = set()
@@ -77,23 +94,22 @@ class ClassDef:
                         "duplicate field " + member[1]                    
                     )
                 new_field = FieldDef(member)
-                f_type = assign_type(new_field.field_type)
+                f_type = self.assign_type(new_field.field_type)
                 v_type = create_value(member[3]).type()
 
-                if f_type == Type.CLASS:
-                    # if class name doesn't exist yet
-                    if new_field.field_type not in self.interpreter.class_index and new_field.field_type != self.name:
-                        self.interpreter.error(
-                            ErrorType.TYPE_ERROR,
-                            "invalid type/type mismatch with field " + member[2]
-                        )
+                if f_type is None:
+                    self.interpreter.error(
+                        ErrorType.TYPE_ERROR,
+                        "invalid type/type mismatch with field " + member[2]
+                    )
+                elif f_type == Type.CLASS:
                     # if default value isn't null
-                    elif new_field.default_field_value != InterpreterBase.NULL_DEF:
+                    if new_field.default_field_value != InterpreterBase.NULL_DEF:
                         self.interpreter.error(
                             ErrorType.TYPE_ERROR,
                             "invalid type/type mismatch with field " + member[2]
                         )
-                elif f_type == Type.INT or f_type == Type.STRING or f_type == Type.BOOL:
+                else:
                     if v_type != f_type:
                         self.interpreter.error(
                             ErrorType.TYPE_ERROR,
@@ -107,11 +123,25 @@ class ClassDef:
         methods_defined_so_far = set()
         for member in class_body:
             if member[0] == InterpreterBase.METHOD_DEF:
-                if member[1] in methods_defined_so_far:  # redefinition
+                if member[2] in methods_defined_so_far:  # redefinition
                     self.interpreter.error(
                         ErrorType.NAME_ERROR,
                         "duplicate method " + member[1],
                         member[0].line_num,
                     )
-                self.methods.append(MethodDef(member))
-                methods_defined_so_far.add(member[1])
+                new_method = MethodDef(member)
+                r_type = self.assign_type(new_method.return_type)
+                if r_type is None and new_method.return_type != InterpreterBase.VOID_DEF:
+                    self.interpreter.error(
+                        ErrorType.TYPE_ERROR,
+                        "invalid return type for method " + new_method.method_name
+                    )
+                for formal_param in new_method.formal_params:
+                    f_type = self.assign_type(new_method.param_types[formal_param])
+                    if f_type is None:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR,
+                            "invalid type for parameter " + formal_param
+                        )
+                self.methods.append(new_method)
+                methods_defined_so_far.add(new_method.method_name)

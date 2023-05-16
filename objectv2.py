@@ -19,6 +19,7 @@ class ObjectDef:
         self.interpreter = interpreter  # objref to interpreter object. used to report errors, get input, produce output
         self.class_def = class_def  # take class body from 3rd+ list elements, e.g., ["class",classname", [classbody]]
         self.trace_output = trace_output
+        self.class_type = class_def.name
         self.__map_fields_to_values()
         self.__map_method_names_to_method_definitions()
         self.__create_map_of_operations_to_lambdas()  # sets up maps to facilitate binary and unary operations, e.g., (+ 5 6)
@@ -47,7 +48,9 @@ class ObjectDef:
             EnvironmentManager()
         )  # maintains lexical environment for function; just params for now
         for formal, actual in zip(method_info.formal_params, actual_params):
-            env.set(formal, actual)
+           
+            env.set_val(formal, actual)
+            env.set_type(formal, method_info.param_types[formal])
         # since each method has a single top-level statement, execute it.
         status, return_value = self.__execute_statement(env, method_info.code)
         # if the method explicitly used the (return expression) statement to return a value, then return that
@@ -161,16 +164,42 @@ class ObjectDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR, "can't assign to nothing " + var_name, line_num
             )
-        param_val = env.get(var_name)
+        param_val = env.get_val(var_name)
         if param_val is not None:
-            env.set(var_name, value)
+            if param_val.type() != value.type():
+                self.interpreter.error(
+                    ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
+                )
+            elif param_val.type() == Type.CLASS and value.type() == Type.CLASS:
+                param_type = env.get_type(var_name)
+                if value.value() is not None:
+                    if param_type != value.value().class_type:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
+                        )              
+            env.set_val(var_name, value)
             return
 
         if var_name not in self.fields:
             self.interpreter.error(
                 ErrorType.NAME_ERROR, "unknown variable " + var_name, line_num
             )
-        self.fields[var_name] = value
+        else:
+            field_val = self.fields[var_name]
+            if field_val.type() != value.type():
+                self.interpreter.error(
+                    ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
+                )
+            elif field_val.type() == Type.CLASS and value.type() == Type.CLASS:
+                field_type = self.field_types[var_name]
+                if value.value() is not None:
+                    if field_type != value.value().class_type:
+                        self.interpreter.error(
+                            ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
+                        )
+            self.fields[var_name] = value
+            
+        
 
     # (if expression (statement) (statement) ) where expresion could be a boolean constant (e.g., true), member
     # variable without ()s, or a boolean expression in parens, like (> 5 a)
@@ -221,7 +250,7 @@ class ObjectDef:
     def __evaluate_expression(self, env, expr, line_num_of_statement):
         if not isinstance(expr, list):
             # locals shadow member variables
-            val = env.get(expr)
+            val = env.get_val(expr)
             if val is not None:
                 return val
             if expr in self.fields:
@@ -271,7 +300,11 @@ class ObjectDef:
                         "invalid operator applied to class",
                         line_num_of_statement,
                     )
-                return self.binary_ops[Type.CLASS][operator](operand1, operand2)
+                if operand1.value() is None or operand2.value() is None:
+                    return self.binary_ops[Type.CLASS][operator](operand1, operand2)
+                elif operand1.value().class_type == operand2.value().class_type:
+                    return self.binary_ops[Type.CLASS][operator](operand1, operand2)
+                    
             # error what about an obj reference and null
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
@@ -331,8 +364,10 @@ class ObjectDef:
 
     def __map_fields_to_values(self):
         self.fields = {}
+        self.field_types = {}
         for field in self.class_def.get_fields():
             self.fields[field.field_name] = create_value(field.default_field_value)
+            self.field_types[field.field_name] = field.field_type
 
     def __create_map_of_operations_to_lambdas(self):
         self.binary_op_list = [
@@ -383,8 +418,8 @@ class ObjectDef:
             "!=": lambda a, b: Value(Type.BOOL, a.value() != b.value()),
         }
         self.binary_ops[Type.CLASS] = {
-            "==": lambda a, b: Value(Type.BOOL, a.value() == b.value()),
-            "!=": lambda a, b: Value(Type.BOOL, a.value() != b.value()),
+            "==": lambda a, b: Value(Type.BOOL, a.value() is b.value()),
+            "!=": lambda a, b: Value(Type.BOOL, a.value() is not b.value()),
         }
 
         self.unary_ops = {}

@@ -13,19 +13,29 @@ class EnvironmentManager:
     """
 
     def __init__(self):
-        self.environment = {}
+        self.environment_val = {}
+        self.environment_type = {}
 
-    def get(self, symbol):
+    def get_val(self, symbol):
         """
         Get data associated with variable name.
         """
-        if symbol in self.environment:
-            return self.environment[symbol]
+        if symbol in self.environment_val:
+            return self.environment_val[symbol]
+
+        return None
+    
+    def get_type(self, symbol):
+        if symbol in self.environment_type:
+            return self.environment_type[symbol]
 
         return None
 
-    def set(self, symbol, value):
+    def set_val(self, symbol, value):
         """
         Set data associated with a variable name.
         """
-        self.environment[symbol] = value
+        self.environment_val[symbol] = value
+
+    def set_type(self, symbol, type):
+        self.environment_type[symbol] = type

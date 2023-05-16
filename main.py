@@ -4,10 +4,8 @@ from interpreterv2 import Interpreter
 def main():
   # all programs will be provided to your interpreter as a list of 
   # python strings, just as shown here.
-  program_source = ['(class main (field main x null) (method void main () (begin (if (== x null) (print "yes")) (if (== null x) (print "yes")) (set x (new main)) (if (!= x null) (print "yes")) ) ) )']
-  # '(class main (method fact (n) (if (== n 1) (return 1) (return (* n (call me fact (- n 1)))))) (method main () (print (call me fact 5))))'
-  # this is how you use our BParser class to parse a valid 
-  # Brewin program into python list format.
+  program_source = ['(class person (field string name "jeffrey") (method void print_name () (print name) ) ) (class person2 (field string name "jeffrey") (method void print_name () (print name) ) ) (class main (field person pf null) (field person pf2 null) (method void main () (begin (set pf (new person)) (set pf2 pf) (call pf print_name) (print (== pf2 null)) ) ) )']
+  
   itrptr = Interpreter()
   itrptr.run(program_source)
 
