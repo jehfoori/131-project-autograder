@@ -173,7 +173,7 @@ class ObjectDef:
             elif param_val.type() == Type.CLASS and value.type() == Type.CLASS:
                 param_type = env.get_type(var_name)
                 if value.value() is not None:
-                    if param_type != value.value().class_type:
+                    if param_type not in value.value().class_type:
                         self.interpreter.error(
                             ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
                         )              
@@ -304,7 +304,7 @@ class ObjectDef:
                     return self.binary_ops[Type.CLASS][operator](operand1, operand2)
                 elif operand1.value().class_type == operand2.value().class_type:
                     return self.binary_ops[Type.CLASS][operator](operand1, operand2)
-                    
+
             # error what about an obj reference and null
             self.interpreter.error(
                 ErrorType.TYPE_ERROR,
@@ -359,15 +359,15 @@ class ObjectDef:
 
     def __map_method_names_to_method_definitions(self):
         self.methods = {}
-        for method in self.class_def.get_methods():
-            self.methods[method.method_name] = method
+        for name, method in self.class_def.get_methods().items():
+            self.methods[name] = method
 
     def __map_fields_to_values(self):
         self.fields = {}
         self.field_types = {}
-        for field in self.class_def.get_fields():
-            self.fields[field.field_name] = create_value(field.default_field_value)
-            self.field_types[field.field_name] = field.field_type
+        for name, field in self.class_def.get_fields().items():
+            self.fields[name] = create_value(field.default_field_value)
+            self.field_types[name] = field.field_type
 
     def __create_map_of_operations_to_lambdas(self):
         self.binary_op_list = [

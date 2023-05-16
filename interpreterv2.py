@@ -73,4 +73,16 @@ class Interpreter(InterpreterBase):
                         f"Duplicate class name {item[1]}",
                         item[0].line_num,
                     )
-                self.class_index[item[1]] = ClassDef(item, self)
+                if isinstance(item[2], str) and item[2] == "inherits":
+                    super_name = item[3]
+                    if super_name not in self.class_index:
+                        super().error(
+                            ErrorType.TYPE_ERROR,
+                            f"No class named {super_name} found",
+                            item[0].line_num,
+                        )
+                    else:
+                        superclass = self.class_index[super_name]
+                        self.class_index[item[1]] = ClassDef(item, self, superclass) 
+                else:
+                    self.class_index[item[1]] = ClassDef(item, self)

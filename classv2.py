@@ -47,11 +47,13 @@ class ClassDef:
     class definition: [class classname [field1 field2 ... method1 method2 ...]]
     """
 
-    def __init__(self, class_def, interpreter):
+    def __init__(self, class_def, interpreter, superclass=None):
         self.interpreter = interpreter
         self.name = class_def[1]
-        self.__create_field_list(class_def[2:])
-        self.__create_method_list(class_def[2:])
+        self.__create_class_hierarchy(superclass)
+        self.__create_field_map(class_def[2:], superclass)
+        self.__create_method_map(class_def[2:], superclass)
+
     
     def get_fields(self):
         """
@@ -83,9 +85,21 @@ class ClassDef:
         
         return False
 
-    def __create_field_list(self, class_body):
-        self.fields = []
+    def __create_class_hierarchy(self, superclass):
+        self.class_hierarchy = []
+        if superclass is None:
+            self.class_hierarchy.append(self.name)
+        else:
+            self.class_hierarchy = superclass.class_hierarchy.append(self.name)
+    
+    def __create_field_map(self, class_body, superclass):
+        self.fields = {}
         fields_defined_so_far = set()
+        # inherit fields from superclass
+        if superclass is not None:
+            for name, field in superclass.get_fields().items():
+                self.fields[name] = field
+
         for member in class_body:
             if member[0] == InterpreterBase.FIELD_DEF:
                 if member[2] in fields_defined_so_far:  # redefinition
@@ -115,12 +129,19 @@ class ClassDef:
                             ErrorType.TYPE_ERROR,
                             "invalid type/type mismatch with field " + member[2]
                         )
-                self.fields.append(new_field)
+                self.fields[new_field.field_name] = new_field
                 fields_defined_so_far.add(new_field.field_name)
+        print(self.name + str(self.fields))
 
-    def __create_method_list(self, class_body):
-        self.methods = []
+
+    def __create_method_map(self, class_body, superclass):
+        self.methods = {}
         methods_defined_so_far = set()
+
+        if superclass is not None:
+            for name, method in superclass.get_methods().items():
+                self.methods[name] = method
+
         for member in class_body:
             if member[0] == InterpreterBase.METHOD_DEF:
                 if member[2] in methods_defined_so_far:  # redefinition
@@ -143,5 +164,6 @@ class ClassDef:
                             ErrorType.TYPE_ERROR,
                             "invalid type for parameter " + formal_param
                         )
-                self.methods.append(new_method)
+                self.methods[new_method.method_name] = new_method
                 methods_defined_so_far.add(new_method.method_name)
+        print(self.name + str(self.methods))
