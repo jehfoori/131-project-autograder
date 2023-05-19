@@ -6,7 +6,7 @@ of the code to execute various instructions.
 from env_v2 import EnvironmentManager
 from intbase import InterpreterBase, ErrorType
 from type_valuev2 import create_value
-from type_valuev2 import Type, Value
+from type_valuev2 import Type, Value, ClassValue
 
 
 class ObjectDef:
@@ -19,7 +19,8 @@ class ObjectDef:
         self.interpreter = interpreter  # objref to interpreter object. used to report errors, get input, produce output
         self.class_def = class_def  # take class body from 3rd+ list elements, e.g., ["class",classname", [classbody]]
         self.trace_output = trace_output
-        self.class_type = class_def.name
+        self.class_name = class_def.name
+        self.__map_methods_to_fields()
         self.__map_fields_to_values()
         self.__map_method_names_to_method_definitions()
         self.__create_map_of_operations_to_lambdas()  # sets up maps to facilitate binary and unary operations, e.g., (+ 5 6)
@@ -32,33 +33,72 @@ class ObjectDef:
         The error is then generated at the source (i.e., where the call is initiated).
         """
         if method_name not in self.methods:
-            self.interpreter.error(
-                ErrorType.NAME_ERROR,
-                "unknown method " + method_name,
-                line_num_of_caller,
-            )
+            self.interpreter.error(ErrorType.NAME_ERROR, "unknown method " + method_name, line_num_of_caller,)
         method_info = self.methods[method_name]
+        
         if len(actual_params) != len(method_info.formal_params):
-            self.interpreter.error(
-                ErrorType.TYPE_ERROR,
-                "invalid number of parameters in call to " + method_name,
-                line_num_of_caller,
-            )
-        env = (
-            EnvironmentManager()
-        )  # maintains lexical environment for function; just params for now
+            self.interpreter.error(ErrorType.NAME_ERROR, "invalid number of parameters in call to " + method_name, line_num_of_caller,)
+        
+        env = (EnvironmentManager())  # maintains lexical environment for function; just params for now
         for formal, actual in zip(method_info.formal_params, actual_params):
-           
-            env.set_val(formal, actual)
-            env.set_type(formal, method_info.param_types[formal])
+            formal_type = method_info.param_types[formal]
+            if not self.__check_types(formal_type, actual):
+                self.interpreter.error(ErrorType.NAME_ERROR, "bad type for " + formal, line_num_of_caller,) 
+            if actual.type() == Type.CLASS and actual.value() is None and actual.class_name() is None:
+                actual.set_class_name(formal_type)
+            env.set(formal, (actual, method_info.param_types[formal]))
         # since each method has a single top-level statement, execute it.
         status, return_value = self.__execute_statement(env, method_info.code)
+            
         # if the method explicitly used the (return expression) statement to return a value, then return that
         # value back to the caller
         if status == ObjectDef.STATUS_RETURN:
-            return return_value
-        # The method didn't explicitly return a value, so return a value of type nothing
-        return Value(InterpreterBase.NOTHING_DEF)
+            # return with no value, return the default
+            if return_value.type() == Type.NOTHING:
+                return self.__default_value(method_info.return_type)
+            else: # returned with a value, check the types
+                if method_info.return_type == InterpreterBase.VOID_DEF:
+                    self.interpreter.error(
+                        ErrorType.TYPE_ERROR, 
+                        "return type mismatch for method " + method_name,
+                        line_num_of_caller,
+                    ) 
+                # associate a class to null return
+                if return_value.type() == Type.CLASS and return_value.value() is None and return_value.class_name() is None:
+                    return_value.set_class_name(method_info.return_type)
+                if not self.__check_types(method_info.return_type, return_value):
+                    self.interpreter.error(
+                        ErrorType.TYPE_ERROR, 
+                        "return type mismatch for method " + method_name,
+                        line_num_of_caller,
+                    )
+            return return_value         
+        # The method didn't explicitly return a value, so return the default value
+        return self.__default_value(method_info.return_type)
+
+    def __check_types(self, type, value):
+        # if the return type is void we know it's wrong because we've already dealt with empty returns!
+        base_type = self.class_def.assign_type(type)
+        if base_type != value.type():
+            return False
+        elif base_type == value.type() and base_type == Type.CLASS:
+            if value.class_name() is not None: # bare null values are compatible with any class
+                hierarchy = self.interpreter.class_index[value.class_name()].class_hierarchy
+                if type not in hierarchy:
+                    return False
+        return True
+
+    def __default_value(self, return_type):
+            if return_type == InterpreterBase.INT_DEF:
+                return Value(Type.INT, 0)
+            elif return_type == InterpreterBase.BOOL_DEF:
+                return Value(Type.BOOL, False)
+            elif return_type == InterpreterBase.STRING_DEF:
+                return Value(Type.STRING, "")
+            elif return_type == InterpreterBase.VOID_DEF:
+                return Value(Type.NOTHING)
+            else:
+                return ClassValue(Type.CLASS, None, return_type)    
 
     def __execute_statement(self, env, code):
         """
@@ -89,10 +129,31 @@ class ObjectDef:
             return self.__execute_input(env, code, False)
         if tok == InterpreterBase.PRINT_DEF:
             return self.__execute_print(env, code)
+        if tok == InterpreterBase.LET_DEF:
+            return self.__execute_let(env, code)
 
         self.interpreter.error(
             ErrorType.SYNTAX_ERROR, "unknown statement " + tok, tok.line_num
         )
+    def __execute_let(self, env, code):
+        let_scope = {}
+        for type, name, value in code[1]:
+            if name in let_scope:
+                self.interpreter.error(
+                ErrorType.NAME_ERROR, "duplicate name in let statement: " + name, code[0].line_num
+                )
+            value = create_value(value)
+            if not self.__check_types(type, value):
+                self.interpreter.error(
+                ErrorType.TYPE_ERROR, "let statement type mismatch: " + name, code[0].line_num
+                )
+            let_scope[name] = (value, type)
+        env.let_tables.append(let_scope)
+
+        self.__execute_begin(env, code[1:])
+
+        env.let_tables.pop()
+        return ObjectDef.STATUS_PROCEED, None
 
     # (begin (statement1) (statement2) ... (statementn))
     def __execute_begin(self, env, code):
@@ -126,9 +187,10 @@ class ObjectDef:
         if len(code) == 1:
             # [return] with no return expression
             return ObjectDef.STATUS_RETURN, create_value(InterpreterBase.NOTHING_DEF)
-        return ObjectDef.STATUS_RETURN, self.__evaluate_expression(
-            env, code[1], code[0].line_num
-        )
+        else:
+            return ObjectDef.STATUS_RETURN, self.__evaluate_expression(
+                env, code[1], code[0].line_num
+            )
 
     # (print expression1 expression2 ...) where expresion could be a variable, value, or a (+ ...)
     def __execute_print(self, env, code):
@@ -164,20 +226,16 @@ class ObjectDef:
             self.interpreter.error(
                 ErrorType.TYPE_ERROR, "can't assign to nothing " + var_name, line_num
             )
-        param_val = env.get_val(var_name)
-        if param_val is not None:
-            if param_val.type() != value.type():
+        param = env.get(var_name)
+        if param is not None:
+            param_val, param_type = param
+            if not self.__check_types(param_type, value):
                 self.interpreter.error(
                     ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
                 )
-            elif param_val.type() == Type.CLASS and value.type() == Type.CLASS:
-                param_type = env.get_type(var_name)
-                if value.value() is not None:
-                    if param_type not in value.value().class_type:
-                        self.interpreter.error(
-                            ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
-                        )              
-            env.set_val(var_name, value)
+            if value.type() == Type.CLASS and value.value() is None and value.class_name() is None:
+                value.set_class_name(param_type)
+            env.set(var_name, (value, param_type))
             return
 
         if var_name not in self.fields:
@@ -185,21 +243,14 @@ class ObjectDef:
                 ErrorType.NAME_ERROR, "unknown variable " + var_name, line_num
             )
         else:
-            field_val = self.fields[var_name]
-            if field_val.type() != value.type():
+            field_val, field_type = self.fields[var_name]
+            if not self.__check_types(field_type, value):
                 self.interpreter.error(
                     ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
                 )
-            elif field_val.type() == Type.CLASS and value.type() == Type.CLASS:
-                field_type = self.field_types[var_name]
-                if value.value() is not None:
-                    if field_type != value.value().class_type:
-                        self.interpreter.error(
-                            ErrorType.TYPE_ERROR, "incompatible types on assignment of " + var_name, line_num
-                        )
-            self.fields[var_name] = value
-            
-        
+            if value.type() == Type.CLASS and value.value() is None and value.class_name() is None:
+                value.set_class_name(field_type)
+            self.fields[var_name] = value, field_type
 
     # (if expression (statement) (statement) ) where expresion could be a boolean constant (e.g., true), member
     # variable without ()s, or a boolean expression in parens, like (> 5 a)
@@ -250,11 +301,13 @@ class ObjectDef:
     def __evaluate_expression(self, env, expr, line_num_of_statement):
         if not isinstance(expr, list):
             # locals shadow member variables
-            val = env.get_val(expr)
+            if expr == InterpreterBase.ME_DEF:
+                return ClassValue(Type.CLASS, self, self.class_name)
+            val = env.get(expr)
             if val is not None:
-                return val
+                return val[0]
             if expr in self.fields:
-                return self.fields[expr]
+                return self.fields[expr][0]
             # need to check for variable name and get its value too
             value = create_value(expr)
             if value is not None:
@@ -300,9 +353,11 @@ class ObjectDef:
                         "invalid operator applied to class",
                         line_num_of_statement,
                     )
-                if operand1.value() is None or operand2.value() is None:
+                if operand1.class_name() is None or operand2.class_name() is None:
                     return self.binary_ops[Type.CLASS][operator](operand1, operand2)
-                elif operand1.value().class_type == operand2.value().class_type:
+                op1_hierarchy = self.interpreter.class_index[operand1.class_name()].class_hierarchy
+                op2_hierarchy = self.interpreter.class_index[operand2.class_name()].class_hierarchy
+                if operand1.class_name() in op2_hierarchy or operand2.class_name() in op1_hierarchy:
                     return self.binary_ops[Type.CLASS][operator](operand1, operand2)
 
             # error what about an obj reference and null
@@ -332,7 +387,7 @@ class ObjectDef:
     # (new classname)
     def __execute_new_aux(self, _, code, line_num_of_statement):
         obj = self.interpreter.instantiate(code[1], line_num_of_statement)
-        return Value(Type.CLASS, obj)
+        return ClassValue(Type.CLASS, obj, code[1])
 
     # this method is a helper used by call statements and call expressions
     # (call object_ref/me methodname p1 p2 p3)
@@ -364,11 +419,20 @@ class ObjectDef:
 
     def __map_fields_to_values(self):
         self.fields = {}
-        self.field_types = {}
         for name, field in self.class_def.get_fields().items():
-            self.fields[name] = create_value(field.default_field_value)
-            self.field_types[name] = field.field_type
+            self.fields[name] = (create_value(field.default_field_value, field.field_type), field.field_type)
 
+    def __map_methods_to_fields(self):
+        curr_class = self.class_def
+        self.methods = {}
+        self.method_field_map = {}
+        while curr_class is not None:
+            for name, method in curr_class.get_methods().items():
+                self.methods[name] = method
+                self.method_field_map[name] = curr_class.get_fields()
+            curr_class = curr_class.superclass
+        
+        print(self.method_field_map)
     def __create_map_of_operations_to_lambdas(self):
         self.binary_op_list = [
             "+",

@@ -49,10 +49,11 @@ class ClassDef:
 
     def __init__(self, class_def, interpreter, superclass=None):
         self.interpreter = interpreter
+        self.superclass = superclass
         self.name = class_def[1]
         self.__create_class_hierarchy(superclass)
-        self.__create_field_map(class_def[2:], superclass)
-        self.__create_method_map(class_def[2:], superclass)
+        self.__create_field_map(class_def[2:])
+        self.__create_method_map(class_def[2:])
 
     
     def get_fields(self):
@@ -74,15 +75,14 @@ class ClassDef:
             return Type.BOOL
         elif type == InterpreterBase.STRING_DEF:
             return Type.STRING
-        elif self.valid_class(type):
+        elif self.existing_class(type):
             return Type.CLASS
         else:
             return None
 
-    def valid_class(self, class_name):
+    def existing_class(self, class_name):
         if class_name in self.interpreter.class_index or class_name == self.name:
             return True
-        
         return False
 
     def __create_class_hierarchy(self, superclass):
@@ -90,15 +90,13 @@ class ClassDef:
         if superclass is None:
             self.class_hierarchy.append(self.name)
         else:
-            self.class_hierarchy = superclass.class_hierarchy.append(self.name)
+            self.class_hierarchy = superclass.class_hierarchy + [self.name]
+        print(self.name + str(self.class_hierarchy))
     
-    def __create_field_map(self, class_body, superclass):
+    def __create_field_map(self, class_body):
         self.fields = {}
         fields_defined_so_far = set()
         # inherit fields from superclass
-        if superclass is not None:
-            for name, field in superclass.get_fields().items():
-                self.fields[name] = field
 
         for member in class_body:
             if member[0] == InterpreterBase.FIELD_DEF:
@@ -134,13 +132,9 @@ class ClassDef:
         print(self.name + str(self.fields))
 
 
-    def __create_method_map(self, class_body, superclass):
+    def __create_method_map(self, class_body):
         self.methods = {}
         methods_defined_so_far = set()
-
-        if superclass is not None:
-            for name, method in superclass.get_methods().items():
-                self.methods[name] = method
 
         for member in class_body:
             if member[0] == InterpreterBase.METHOD_DEF:
@@ -157,13 +151,20 @@ class ClassDef:
                         ErrorType.TYPE_ERROR,
                         "invalid return type for method " + new_method.method_name
                     )
+                fields_defined = set()
                 for formal_param in new_method.formal_params:
+                    if formal_param in fields_defined:
+                        self.interpreter.error(
+                            ErrorType.NAME_ERROR,
+                            "duplicate formal param name " + formal_param
+                        )
                     f_type = self.assign_type(new_method.param_types[formal_param])
                     if f_type is None:
                         self.interpreter.error(
                             ErrorType.TYPE_ERROR,
                             "invalid type for parameter " + formal_param
                         )
+                    fields_defined.add(formal_param)
                 self.methods[new_method.method_name] = new_method
                 methods_defined_so_far.add(new_method.method_name)
         print(self.name + str(self.methods))

@@ -13,29 +13,28 @@ class EnvironmentManager:
     """
 
     def __init__(self):
-        self.environment_val = {}
-        self.environment_type = {}
+        self.environment = {}
+        self.let_tables = []
+        self.field_scope = []
 
-    def get_val(self, symbol):
+    def get(self, symbol):
         """
         Get data associated with variable name.
         """
-        if symbol in self.environment_val:
-            return self.environment_val[symbol]
+        for table in reversed(self.let_tables):
+            if symbol in table:
+                return table[symbol]
+        if symbol in self.environment:
+            return self.environment[symbol]
 
         return None
-    
-    def get_type(self, symbol):
-        if symbol in self.environment_type:
-            return self.environment_type[symbol]
-
-        return None
-
-    def set_val(self, symbol, value):
+        
+    def set(self, symbol, value):
         """
         Set data associated with a variable name.
         """
-        self.environment_val[symbol] = value
-
-    def set_type(self, symbol, type):
-        self.environment_type[symbol] = type
+        for table in reversed(self.let_tables):
+            if symbol in table:
+                table[symbol] = value
+                return
+        self.environment[symbol] = value

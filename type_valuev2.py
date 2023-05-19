@@ -34,9 +34,19 @@ class Value:
         self.__type = other.type()
         self.__value = other.value()
 
+class ClassValue(Value):
+    def __init__(self, value_type, value=None, class_name=None):
+        super().__init__(value_type, value)
+        self.__class_name = class_name
+    
+    def set_class_name(self, name):
+        self.__class_name = name
+        
+    def class_name(self):
+        return self.__class_name
 
 # pylint: disable=too-many-return-statements
-def create_value(val):
+def create_value(val, type_name=None):
     """
     Create a Value object from a Python value.
     """
@@ -49,7 +59,7 @@ def create_value(val):
     if val.lstrip('-').isnumeric():
         return Value(Type.INT, int(val))
     if val == InterpreterBase.NULL_DEF:
-        return Value(Type.CLASS, None)
+        return ClassValue(Type.CLASS, None, type_name)
     if val == InterpreterBase.NOTHING_DEF:
         return Value(Type.NOTHING, None)
     return None
